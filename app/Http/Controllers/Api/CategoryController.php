@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Validation\Rule;
 
 class CategoryController extends Controller
 {
@@ -19,13 +20,14 @@ class CategoryController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
+            'slug' => 'nullable|string|max:255|unique:categories,slug',
             'description' => 'nullable|string',
             'image' => 'nullable|string',
             'is_active' => 'boolean'
         ]);
 
         $category = Category::create($request->all());
-        return response()->json($category, Response::HTTP_CREATED);
+        return response()->json($category->load('products'), Response::HTTP_CREATED);
     }
 
     public function show(Category $category)
@@ -37,13 +39,19 @@ class CategoryController extends Controller
     {
         $request->validate([
             'name' => 'string|max:255',
+            'slug' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::unique('categories', 'slug')->ignore($category->id)
+            ],
             'description' => 'nullable|string',
             'image' => 'nullable|string',
             'is_active' => 'boolean'
         ]);
 
         $category->update($request->all());
-        return response()->json($category);
+        return response()->json($category->load('products'));
     }
 
     public function destroy(Category $category)

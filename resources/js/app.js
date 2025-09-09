@@ -1,4 +1,6 @@
 import './bootstrap';
+
+// Import Bootstrap JavaScript
 import 'bootstrap/dist/js/bootstrap.bundle.min.js';
 
 class ProductManager {
@@ -11,285 +13,110 @@ class ProductManager {
     }
 
     async init() {
-        await this.fetchData();
-        this.bindEvents();
-        this.updateStats();
+        try {
+            await this.fetchData();
+            this.bindEvents();
+            this.updateStats();
+        } catch (error) {
+            console.error('Initialization error:', error);
+            this.showAlert('Failed to initialize application', 'danger');
+        }
     }
 
     async fetchData() {
         try {
+            console.log('Fetching data...');
+            
             const [productsRes, categoriesRes] = await Promise.all([
-                fetch('/products'),
-                fetch('/categories')
+                fetch('/api/products', {
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                }),
+                fetch('/api/categories', {
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
             ]);
+            
+            console.log('Products response status:', productsRes.status);
+            console.log('Categories response status:', categoriesRes.status);
+            
+            if (!productsRes.ok || !categoriesRes.ok) {
+                throw new Error('Failed to fetch data from server');
+            }
             
             this.products = await productsRes.json();
             this.categories = await categoriesRes.json();
+            
+            console.log('Products loaded:', this.products.length);
+            console.log('Categories loaded:', this.categories.length);
             
             this.renderData();
             this.loadCategoryCheckboxes();
         } catch (error) {
             console.error('Error fetching data:', error);
-            this.showAlert('Error loading data', 'danger');
+            this.showAlert('Error loading data: ' + error.message, 'danger');
         }
     }
 
     bindEvents() {
         // Category form submission
-        document.getElementById('categoryForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            await this.saveCategory();
-        });
+        const categoryForm = document.getElementById('categoryForm');
+        if (categoryForm) {
+            categoryForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await this.saveCategory();
+            });
+        }
 
         // Product form submission
-        document.getElementById('productForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            await this.saveProduct();
-        });
+        const productForm = document.getElementById('productForm');
+        if (productForm) {
+            productForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await this.saveProduct();
+            });
+        }
 
         // Reset forms when modals are closed
-        document.getElementById('categoryModal').addEventListener('hidden.bs.modal', () => {
-            this.resetCategoryForm();
-        });
-
-        document.getElementById('productModal').addEventListener('hidden.bs.modal', () => {
-            this.resetProductForm();
-        });
-    }
-
-    async saveCategory() {
-        const formData = new FormData(document.getElementById('categoryForm'));
-        const data = Object.fromEntries(formData.entries());
-        
-        // Convert is_active to boolean
-        data.is_active = data.is_active === '1';
-
-        try {
-            const url = this.editingCategory ? `/categories/${this.editingCategory.id}` : '/categories';
-            const method = this.editingCategory ? 'PUT' : 'POST';
-            
-            const response = await fetch(url, {
-                method: method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                },
-                body: JSON.stringify(data)
+        const categoryModal = document.getElementById('categoryModal');
+        if (categoryModal) {
+            categoryModal.addEventListener('hidden.bs.modal', () => {
+                this.resetCategoryForm();
             });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to save category');
-            }
-
-            const result = await response.json();
-            
-            // Close modal
-            const modal = bootstrap.Modal.getInstance(document.getElementById('categoryModal'));
-            modal.hide();
-            
-            // Show success message
-            this.showAlert(
-                `Category ${this.editingCategory ? 'updated' : 'created'} successfully!`, 
-                'success'
-            );
-            
-            // Refresh data
-            await this.fetchData();
-            
-        } catch (error) {
-            console.error('Error saving category:', error);
-            this.showAlert(`Error: ${error.message}`, 'danger');
         }
-    }
 
-    async saveProduct() {
-        const formData = new FormData(document.getElementById('productForm'));
-        const data = Object.fromEntries(formData.entries());
-        
-        // Convert numeric fields
-        data.price = parseFloat(data.price);
-        data.sale_price = data.sale_price ? parseFloat(data.sale_price) : null;
-        data.stock_quantity = parseInt(data.stock_quantity) || 0;
-        data.is_active = data.is_active === '1';
-
-        // Get selected categories
-        const categoryCheckboxes = document.querySelectorAll('#productCategories input[type="checkbox"]:checked');
-        data.category_ids = Array.from(categoryCheckboxes).map(cb => parseInt(cb.value));
-
-        try {
-            const url = this.editingProduct ? `/products/${this.editingProduct.id}` : '/products';
-            const method = this.editingProduct ? 'PUT' : 'POST';
-            
-            const response = await fetch(url, {
-                method: method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                },
-                body: JSON.stringify(data)
+        const productModal = document.getElementById('productModal');
+        if (productModal) {
+            productModal.addEventListener('hidden.bs.modal', () => {
+                this.resetProductForm();
             });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to save product');
-            }
-
-            const result = await response.json();
-            
-            // Close modal
-            const modal = bootstrap.Modal.getInstance(document.getElementById('productModal'));
-            modal.hide();
-            
-            // Show success message
-            this.showAlert(
-                `Product ${this.editingProduct ? 'updated' : 'created'} successfully!`, 
-                'success'
-            );
-            
-            // Refresh data
-            await this.fetchData();
-            
-        } catch (error) {
-            console.error('Error saving product:', error);
-            this.showAlert(`Error: ${error.message}`, 'danger');
-        }
-    }
-
-    loadCategoryCheckboxes() {
-        const container = document.getElementById('productCategories');
-        if (!container) return;
-
-        if (this.categories.length === 0) {
-            container.innerHTML = '<p class="text-muted">No categories available. Please create categories first.</p>';
-            return;
         }
 
-        container.innerHTML = this.categories.map(category => `
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" value="${category.id}" id="cat_${category.id}">
-                <label class="form-check-label" for="cat_${category.id}">
-                    ${category.name}
-                    <small class="text-muted">(${category.products.length} products)</small>
-                </label>
-            </div>
-        `).join('');
-    }
-
-    editProduct(id) {
-        this.editingProduct = this.products.find(p => p.id === id);
-        if (!this.editingProduct) return;
-
-        // Fill form with product data
-        document.getElementById('productId').value = this.editingProduct.id;
-        document.getElementById('productName').value = this.editingProduct.name;
-        document.getElementById('productSKU').value = this.editingProduct.sku;
-        document.getElementById('productDescription').value = this.editingProduct.description || '';
-        document.getElementById('productPrice').value = this.editingProduct.price;
-        document.getElementById('productSalePrice').value = this.editingProduct.sale_price || '';
-        document.getElementById('productStock').value = this.editingProduct.stock_quantity;
-        document.getElementById('productStatus').value = this.editingProduct.is_active ? '1' : '0';
-
-        // Select categories
-        this.editingProduct.categories.forEach(category => {
-            const checkbox = document.getElementById(`cat_${category.id}`);
-            if (checkbox) checkbox.checked = true;
-        });
-
-        // Update modal title
-        document.getElementById('productModalLabel').innerHTML = '<i class="fas fa-edit me-2"></i>Edit Product';
-        
-        // Show modal
-        const modal = new bootstrap.Modal(document.getElementById('productModal'));
-        modal.show();
-    }
-
-    editCategory(id) {
-        this.editingCategory = this.categories.find(c => c.id === id);
-        if (!this.editingCategory) return;
-
-        // Fill form with category data
-        document.getElementById('categoryId').value = this.editingCategory.id;
-        document.getElementById('categoryName').value = this.editingCategory.name;
-        document.getElementById('categoryDescription').value = this.editingCategory.description || '';
-        document.getElementById('categoryImage').value = this.editingCategory.image || '';
-        document.getElementById('categoryStatus').value = this.editingCategory.is_active ? '1' : '0';
-
-        // Update modal title
-        document.getElementById('categoryModalLabel').innerHTML = '<i class="fas fa-edit me-2"></i>Edit Category';
-        
-        // Show modal
-        const modal = new bootstrap.Modal(document.getElementById('categoryModal'));
-        modal.show();
-    }
-
-    async deleteProduct(id) {
-        if (!confirm('Are you sure you want to delete this product?')) return;
-        
-        try {
-            const response = await fetch(`/products/${id}`, { 
-                method: 'DELETE',
-                headers: {
-                    'Accept': 'application/json',
+        // Auto-generate slug for categories
+        const categoryName = document.getElementById('categoryName');
+        const categorySlug = document.getElementById('categorySlug');
+        if (categoryName && categorySlug) {
+            categoryName.addEventListener('input', (e) => {
+                if (!this.editingCategory) {
+                    categorySlug.value = this.generateSlug(e.target.value);
                 }
             });
-            
-            if (!response.ok) throw new Error('Failed to delete product');
-            
-            this.showAlert('Product deleted successfully!', 'success');
-            await this.fetchData();
-        } catch (error) {
-            console.error('Error deleting product:', error);
-            this.showAlert('Error deleting product', 'danger');
         }
     }
 
-    async deleteCategory(id) {
-        const category = this.categories.find(c => c.id === id);
-        if (category && category.products.length > 0) {
-            if (!confirm(`This category has ${category.products.length} products. Are you sure you want to delete it?`)) {
-                return;
-            }
-        }
-        
-        if (!confirm('Are you sure you want to delete this category?')) return;
-        
-        try {
-            const response = await fetch(`/categories/${id}`, { 
-                method: 'DELETE',
-                headers: {
-                    'Accept': 'application/json',
-                }
-            });
-            
-            if (!response.ok) throw new Error('Failed to delete category');
-            
-            this.showAlert('Category deleted successfully!', 'success');
-            await this.fetchData();
-        } catch (error) {
-            console.error('Error deleting category:', error);
-            this.showAlert('Error deleting category', 'danger');
-        }
-    }
-
-    resetCategoryForm() {
-        document.getElementById('categoryForm').reset();
-        document.getElementById('categoryId').value = '';
-        document.getElementById('categoryModalLabel').innerHTML = '<i class="fas fa-tags me-2"></i>Add New Category';
-        this.editingCategory = null;
-    }
-
-    resetProductForm() {
-        document.getElementById('productForm').reset();
-        document.getElementById('productId').value = '';
-        document.getElementById('productModalLabel').innerHTML = '<i class="fas fa-box me-2"></i>Add New Product';
-        
-        // Uncheck all category checkboxes
-        document.querySelectorAll('#productCategories input[type="checkbox"]').forEach(cb => {
-            cb.checked = false;
-        });
-        
-        this.editingProduct = null;
+    generateSlug(text) {
+        return text.toLowerCase()
+            .replace(/[^a-z0-9 -]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .trim();
     }
 
     renderData() {
@@ -299,15 +126,23 @@ class ProductManager {
     }
 
     updateStats() {
-        document.getElementById('totalProducts').textContent = this.products.length;
-        document.getElementById('totalCategories').textContent = this.categories.length;
-        document.getElementById('activeProducts').textContent = this.products.filter(p => p.is_active).length;
-        document.getElementById('lowStock').textContent = this.products.filter(p => p.stock_quantity < 10).length;
+        const totalProductsEl = document.getElementById('totalProducts');
+        const totalCategoriesEl = document.getElementById('totalCategories');
+        const activeProductsEl = document.getElementById('activeProducts');
+        const lowStockEl = document.getElementById('lowStock');
+
+        if (totalProductsEl) totalProductsEl.textContent = this.products.length;
+        if (totalCategoriesEl) totalCategoriesEl.textContent = this.categories.length;
+        if (activeProductsEl) activeProductsEl.textContent = this.products.filter(p => p.is_active).length;
+        if (lowStockEl) lowStockEl.textContent = this.products.filter(p => p.stock_quantity < 10).length;
     }
 
     renderProducts() {
         const container = document.getElementById('productsContainer');
-        if (!container) return;
+        if (!container) {
+            console.error('Products container not found');
+            return;
+        }
 
         if (this.products.length === 0) {
             container.innerHTML = `
@@ -325,7 +160,7 @@ class ProductManager {
                 <div class="card h-100 card-hover">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h5 class="card-title mb-0">${product.name}</h5>
+                            <h5 class="card-title mb-0">${product.name || 'Unnamed Product'}</h5>
                             <span class="badge ${product.is_active ? 'bg-success' : 'bg-secondary'}">${product.is_active ? 'Active' : 'Inactive'}</span>
                         </div>
                         <p class="card-text text-muted small">${product.description || 'No description available'}</p>
@@ -338,7 +173,7 @@ class ProductManager {
                             <div><strong>Stock:</strong> <span class="${product.stock_quantity < 10 ? 'text-warning fw-bold' : ''}">${product.stock_quantity}</span></div>
                         </div>
                         <div class="mb-3">
-                            ${product.categories.length > 0 ? 
+                            ${product.categories && product.categories.length > 0 ? 
                                 product.categories.map(cat => `<span class="badge bg-primary me-1">${cat.name}</span>`).join('') : 
                                 '<span class="badge bg-light text-muted">No categories</span>'
                             }
@@ -361,7 +196,10 @@ class ProductManager {
 
     renderCategories() {
         const container = document.getElementById('categoriesContainer');
-        if (!container) return;
+        if (!container) {
+            console.error('Categories container not found');
+            return;
+        }
 
         if (this.categories.length === 0) {
             container.innerHTML = `
@@ -380,12 +218,12 @@ class ProductManager {
                     ${category.image ? `<img src="${category.image}" class="card-img-top" style="height: 200px; object-fit: cover;" alt="${category.name}">` : ''}
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h5 class="card-title mb-0">${category.name}</h5>
+                            <h5 class="card-title mb-0">${category.name || 'Unnamed Category'}</h5>
                             <span class="badge ${category.is_active ? 'bg-success' : 'bg-secondary'}">${category.is_active ? 'Active' : 'Inactive'}</span>
                         </div>
                         <p class="card-text text-muted">${category.description || 'No description available'}</p>
                         <div class="d-flex justify-content-between align-items-center">
-                            <span class="badge bg-info">${category.products.length} Product${category.products.length !== 1 ? 's' : ''}</span>
+                            <span class="badge bg-info">${category.products ? category.products.length : 0} Product${(category.products && category.products.length !== 1) ? 's' : ''}</span>
                             <small class="text-muted">Slug: ${category.slug}</small>
                         </div>
                     </div>
@@ -404,7 +242,263 @@ class ProductManager {
         `).join('');
     }
 
+    loadCategoryCheckboxes() {
+        const container = document.getElementById('productCategories');
+        if (!container) return;
+
+        if (this.categories.length === 0) {
+            container.innerHTML = '<p class="text-muted">No categories available. Please create categories first.</p>';
+            return;
+        }
+
+        container.innerHTML = this.categories.map(category => `
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" value="${category.id}" id="cat_${category.id}">
+                <label class="form-check-label" for="cat_${category.id}">
+                    ${category.name}
+                    <small class="text-muted">(${category.products ? category.products.length : 0} products)</small>
+                </label>
+            </div>
+        `).join('');
+    }
+
+    async saveCategory() {
+        const form = document.getElementById('categoryForm');
+        const formData = new FormData(form);
+        
+        const categoryData = {
+            name: formData.get('name'),
+            slug: formData.get('slug') || this.generateSlug(formData.get('name')),
+            description: formData.get('description'),
+            image: formData.get('image'),
+            is_active: formData.has('is_active')
+        };
+
+        try {
+            const url = this.editingCategory ? `/api/categories/${this.editingCategory.id}` : '/api/categories';
+            const method = this.editingCategory ? 'PUT' : 'POST';
+            
+            const response = await fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify(categoryData)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Failed to save category');
+            }
+
+            const savedCategory = await response.json();
+            
+            this.showAlert(
+                this.editingCategory ? 'Category updated successfully!' : 'Category created successfully!', 
+                'success'
+            );
+
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('categoryModal'));
+            modal.hide();
+
+            // Refresh data
+            await this.fetchData();
+
+        } catch (error) {
+            console.error('Error saving category:', error);
+            this.showAlert('Error saving category: ' + error.message, 'danger');
+        }
+    }
+
+    async saveProduct() {
+        const form = document.getElementById('productForm');
+        const formData = new FormData(form);
+        
+        // Get selected categories
+        const selectedCategories = Array.from(document.querySelectorAll('#productCategories input:checked'))
+            .map(checkbox => parseInt(checkbox.value));
+
+        const productData = {
+            name: formData.get('name'),
+            sku: formData.get('sku'),
+            description: formData.get('description'),
+            price: parseFloat(formData.get('price')),
+            sale_price: formData.get('sale_price') ? parseFloat(formData.get('sale_price')) : null,
+            stock_quantity: parseInt(formData.get('stock_quantity')) || 0,
+            is_active: formData.has('is_active'),
+            category_ids: selectedCategories
+        };
+
+        try {
+            const url = this.editingProduct ? `/api/products/${this.editingProduct.id}` : '/api/products';
+            const method = this.editingProduct ? 'PUT' : 'POST';
+            
+            const response = await fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify(productData)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Failed to save product');
+            }
+
+            const savedProduct = await response.json();
+            
+            this.showAlert(
+                this.editingProduct ? 'Product updated successfully!' : 'Product created successfully!', 
+                'success'
+            );
+
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('productModal'));
+            modal.hide();
+
+            // Refresh data
+            await this.fetchData();
+
+        } catch (error) {
+            console.error('Error saving product:', error);
+            this.showAlert('Error saving product: ' + error.message, 'danger');
+        }
+    }
+
+    async deleteProduct(id) {
+        if (!confirm('Are you sure you want to delete this product?')) return;
+        
+        try {
+            const response = await fetch(`/api/products/${id}`, { 
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            
+            if (!response.ok) throw new Error('Failed to delete product');
+            
+            this.showAlert('Product deleted successfully!', 'success');
+            await this.fetchData();
+        } catch (error) {
+            console.error('Error deleting product:', error);
+            this.showAlert('Error deleting product', 'danger');
+        }
+    }
+
+    async deleteCategory(id) {
+        const category = this.categories.find(c => c.id === id);
+        if (category && category.products && category.products.length > 0) {
+            if (!confirm(`This category has ${category.products.length} products. Are you sure you want to delete it?`)) {
+                return;
+            }
+        }
+        
+        if (!confirm('Are you sure you want to delete this category?')) return;
+        
+        try {
+            const response = await fetch(`/api/categories/${id}`, { 
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            
+            if (!response.ok) throw new Error('Failed to delete category');
+            
+            this.showAlert('Category deleted successfully!', 'success');
+            await this.fetchData();
+        } catch (error) {
+            console.error('Error deleting category:', error);
+            this.showAlert('Error deleting category', 'danger');
+        }
+    }
+
+    editProduct(id) {
+        const product = this.products.find(p => p.id === id);
+        if (!product) return;
+
+        this.editingProduct = product;
+        
+        // Populate form
+        document.getElementById('productName').value = product.name;
+        document.getElementById('productSku').value = product.sku;
+        document.getElementById('productDescription').value = product.description || '';
+        document.getElementById('productPrice').value = product.price;
+        document.getElementById('productSalePrice').value = product.sale_price || '';
+        document.getElementById('productStock').value = product.stock_quantity;
+        document.getElementById('productActive').checked = product.is_active;
+
+        // Select categories
+        document.querySelectorAll('#productCategories input[type="checkbox"]').forEach(checkbox => {
+            const categoryId = parseInt(checkbox.value);
+            checkbox.checked = product.categories.some(cat => cat.id === categoryId);
+        });
+
+        // Update modal title
+        document.getElementById('productModalLabel').innerHTML = '<i class="fas fa-edit me-2"></i>Edit Product';
+
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('productModal'));
+        modal.show();
+    }
+
+    editCategory(id) {
+        const category = this.categories.find(c => c.id === id);
+        if (!category) return;
+
+        this.editingCategory = category;
+        
+        // Populate form
+        document.getElementById('categoryName').value = category.name;
+        document.getElementById('categorySlug').value = category.slug;
+        document.getElementById('categoryDescription').value = category.description || '';
+        document.getElementById('categoryImage').value = category.image || '';
+        document.getElementById('categoryActive').checked = category.is_active;
+
+        // Update modal title
+        document.getElementById('categoryModalLabel').innerHTML = '<i class="fas fa-edit me-2"></i>Edit Category';
+
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('categoryModal'));
+        modal.show();
+    }
+
+    resetCategoryForm() {
+        const form = document.getElementById('categoryForm');
+        if (form) form.reset();
+        this.editingCategory = null;
+        document.getElementById('categoryModalLabel').innerHTML = '<i class="fas fa-tags me-2"></i>Add Category';
+    }
+
+    resetProductForm() {
+        const form = document.getElementById('productForm');
+        if (form) form.reset();
+        this.editingProduct = null;
+        document.getElementById('productModalLabel').innerHTML = '<i class="fas fa-box me-2"></i>Add Product';
+        
+        // Uncheck all categories
+        document.querySelectorAll('#productCategories input[type="checkbox"]').forEach(checkbox => {
+            checkbox.checked = false;
+        });
+    }
+
+    getCSRFToken() {
+        const token = document.querySelector('meta[name="csrf-token"]');
+        return token ? token.getAttribute('content') : '';
+    }
+
     showAlert(message, type) {
+        console.log(`Alert (${type}):`, message);
+        
         const alertDiv = document.createElement('div');
         alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
         alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
@@ -417,12 +511,15 @@ class ProductManager {
         document.body.appendChild(alertDiv);
         
         setTimeout(() => {
-            alertDiv.remove();
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
         }, 5000);
     }
 }
 
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM loaded, initializing app...');
     window.app = new ProductManager();
 });
